@@ -1,7 +1,46 @@
-Write your reflection here.
-
-See reflection.md for what makes a good reflection — be specific, use the
-terminology from this assignment (REST API, endpoint, HTTP status code,
-raise_for_status, API key, form data vs. JSON body, rate limit, caching,
-json_normalize, record_path, meta, grain, opinion mining, named-entity
-recognition, prompt, system prompt, reasoning model), and make it actionable.
+In Assignment 06, I learned how to connect several parts of a program to turn customer reviews into useful information. I built functions that called REST APIs, saved the responses, transformed nested JSON into pandas DataFrames, and displayed the results in Streamlit. Compared with the last assignment, this project involved more than organizing data that was already in a table. I had to understand what each service returned and how one step’s output became the next step’s input.
+One important thing I learned was how to make an API request correctly. 
+Each endpoint needed a URL, an API key in the X-API-KEY header, and the right request body. 
+The sentiment and named-entity recognition endpoints used form data through data=, while the classification and chat endpoints used a JSON body through json=. 
+I also learned why response.raise_for_status() belongs immediately after the request. 
+It raises an exception for an unsuccessful HTTP status code so the program stops at the failed request instead of continuing and producing a confusing error later. 
+For example, a 401 would point me toward an authentication problem, while a 429 would indicate a rate limit.
+I learned that receiving a successful response does not automatically mean a function returns the right information. 
+My first unit test run after writing the API functions had 10 passing tests and seven failures. 
+One failure showed that ask_llm was returning the entire JSON response when the function was supposed to return only the reply text. 
+Changing the return statement to response.json()["choices"][0]["message"]["content"] fixed that issue. 
+This helped me understand that a function’s return value is part of its contract. 
+The next function should receive exactly what it expects, rather than having to figure out how to extract it.
+Caching was another major part of the assignment. 
+In sentiment_step and entities_step, I checked whether a cache file existed before making API calls. 
+If it existed, the function loaded the saved JSON; otherwise, it called the API, collected the documents, and saved them for later. 
+The subjects step used a CSV cache for its classification results. 
+This made repeated testing faster and avoided unnecessary requests against the portal’s daily rate limit. 
+I also learned why the order of mentions matters: sending them in a consistent order helps produce the same request and allows the portal to reuse its cached response.
+Working with nested JSON helped me understand the grain of a table, meaning what one row represents. 
+The sentences table had one row per sentence, while the opinions table had one row per opinion target. 
+I used pd.json_normalize with record_path to choose the nested list, meta to preserve review_id, and record_prefix to identify sentence or entity fields. 
+The opinions table required nested loops because each target pointed to its assessments through references. 
+I had to follow those references to attach words such as “overpriced” or “lukewarm” to the correct target. 
+That showed me why flattening data requires understanding its relationships, not just copying values into columns.
+I also learned why opinion mining and named-entity recognition work well together. 
+A sentence can express different feelings about different things, such as liking the seating but disliking the music. 
+Opinion mining preserves those separate opinions. Named-entity recognition can identify people or products that opinion mining misses. 
+Combining those results gave the program more complete information, but it also required checking for duplicate mentions. 
+The alias lookup helped standardize different names for the same item before summarizing them.
+Testing helped me find mistakes that were small in the code but affected several steps. 
+For example, three pipeline tests failed with KeyError: 'id' because the code used review["id"] when the DataFrame used review["review_id"]. 
+Correcting that name allowed all seven selected table, caching, and classification tests to pass. 
+I also encountered a NameError in item_name because the code referred to text even though the parameter was named mention. 
+These errors taught me to check parameter names and column names carefully instead of assuming similar names are interchangeable. 
+Running smaller groups of tests made it easier to identify which part needed attention.
+The question-answering feature taught me how to give an AI model useful evidence. 
+Pandas calculated the mention counts, positive and negative totals, and the engineered net column. 
+The build_messages function then put those facts and review sentences into a prompt. 
+The system prompt set the rules for the response, while the user message supplied the question and evidence. 
+This division made sense to me because the model could focus on explaining the results instead of trying to count mentions itself. 
+I also learned that the reasoning model’s settings were sent as query parameters. 
+The page checked for empty evidence before calling the model, which helped prevent an answer about something the reviews did not mention.
+By the end, all 43 automated tests passed. The app tests checked more than whether the page opened: they checked the filters, displayed information, question box, and how the page handled questions without evidence. 
+I also used Ruff to identify and fix code style issues. For my next assignment, I will read each function’s contract more carefully, confirm the input columns before writing joins, and test each stage before building on it. 
+Passing all the tests showed that the required behavior worked, but the most useful part was learning how to use specific failures to decide what to fix.

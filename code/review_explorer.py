@@ -125,3 +125,127 @@ from reviews import (
 #
 # What the page does NOT do: call the API directly, group or pivot, or build the
 # prompt itself. That logic lives in the package; the page only assembles it.
+reviews_file = os.environ.get("REVIEWS_FILE", REVIEWS_FILE)
+
+st.title("Salt City Coffee — What Customers Are Saying")
+st.markdown(
+    "Explore customer reviews by location or subject, "
+    "or ask a question about what customers are saying."
+)
+
+mentions = analyze_reviews(reviews_file)
+
+location_col, subject_col = st.columns(2)
+
+with location_col:
+    location = st.selectbox(
+        "Location",
+        ["All"] + sorted(mentions["location"].unique()),
+        key="location",
+    )
+
+with subject_col:
+    subject = st.selectbox(
+        "Subject",
+        ["All"] + sorted(mentions["subject"].unique()),
+        key="subject",
+    )
+
+selected = mentions
+
+if location != "All":
+    selected = selected[selected["location"] == location]
+
+if subject != "All":
+    selected = selected[selected["subject"] == subject]
+
+review_col, mention_col, positive_col, negative_col = st.columns(4)
+
+review_col.metric("Reviews", int(selected["review_id"].nunique()))
+mention_col.metric("Mentions", len(selected))
+positive_col.metric(
+    "Positive",
+    int((selected["mention_sentiment"] == "positive").sum()),
+)
+negative_col.metric(
+    "Negative",
+    int((selected["mention_sentiment"] == "negative").sum()),
+)
+
+summary = summarize_items(selected)
+
+praised_tab, complaints_tab, details_tab = st.tabs(
+    ["Most praised", "Most complained about", "What people said"]
+)
+
+praised_tab.dataframe(
+    summary[summary["net"] > 0]
+    .sort_values("net", ascending=False)
+    .head(5),
+    hide_index=True,
+)
+
+complaints_tab.dataframe(
+    summary[summary["net"] < 0]
+    .sort_values("net")
+    .head(5),
+    hide_index=True,
+)
+
+details_tab.dataframe(
+    selected[
+        [
+            "date",
+            "location",
+            "item",
+            "subject",
+            "mention_sentiment",
+            "assessments",
+            "sentence_text",
+        ]
+    ],
+    hide_index=True,
+)
+
+st.subheader("Ask the reviews")
+question = st.text_input(
+    "Your question",
+    placeholder="What is the most popular product?",
+    key="question",
+)
+
+if st.button("Ask", key="ask") and question.strip():
+    scope, evidence = answer_question(
+        question,
+        mentions,
+        load_aliases(),
+    )
+
+    if evidence.empty:
+        st.warning(
+            f"No reviews mention {describe_scope(scope)}. "
+            "Try a menu item, a staff member, or part of the shop."
+        )
+    else:
+        messages = build_messages(question, evidence)
+
+        with st.spinner("Asking the model..."):
+            answer = ask_llm(messages)
+
+        st.markdown(answer)
+        st.caption(
+            f"Based on {len(evidence)} mentions — "
+            f"{describe_scope(scope)}."
+        )
+        st.dataframe(
+            evidence[
+                [
+                    "date",
+                    "location",
+                    "item",
+                    "mention_sentiment",
+                    "sentence_text",
+                ]
+            ],
+            hide_index=True,
+        )
